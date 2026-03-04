@@ -13,7 +13,7 @@ export default function Button({
     primary: "btn-primary",
     success: "btn-success",
     warning: "btn-warning",
-    secondary: "", // Base btn class only
+    secondary: "", 
   }[variant] || "btn-primary";
   
   const sizeClass = size === "sm" ? "btn-sm" : "";

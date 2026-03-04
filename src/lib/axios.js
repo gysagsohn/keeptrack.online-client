@@ -7,10 +7,11 @@ const api = axios.create({
     "Content-Type": "application/json",
     Accept: "application/json",
   },
+  // JWT is sent via Authorization header — cookies not used
   withCredentials: false,
 });
 
-// Attach token if present
+// Attach JWT to every outgoing request if one is stored
 api.interceptors.request.use((config) => {
   const token = tokenStorage.get();
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -22,8 +23,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err?.response?.status;
+
     if (status === 401) {
-      // Clear token using centralized utility
       tokenStorage.remove();
       if (typeof window !== "undefined") {
         const path = window.location.pathname || "";
@@ -31,8 +32,12 @@ api.interceptors.response.use(
         if (!onAuth) window.location.assign("/login");
       }
     }
+
+    // Preserve status on the new error so catch blocks can read error.status
     const msg = err?.response?.data?.message || err.message || "Request failed";
-    return Promise.reject(new Error(msg));
+    const normalized = new Error(msg);
+    normalized.status = status;
+    return Promise.reject(normalized);
   }
 );
 

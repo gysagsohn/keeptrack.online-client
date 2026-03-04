@@ -1,23 +1,33 @@
 import { useAuth } from "../../contexts/useAuth";
 
+/**
+ * Logout button styled with warning colours.
+ * Uses Tailwind hover/focus variants instead of inline JS event handlers
+ * so keyboard users get a visible focus ring.
+ *
+ * Props:
+ *   className  — extra classes to merge in (e.g. for margin)
+ *   fullWidth  — if true, stretches to fill its container
+ */
 export default function LogoutButton({ className = "", fullWidth = false }) {
   const { logout } = useAuth();
 
   return (
     <button
       onClick={logout}
-      className={`btn ${fullWidth ? "w-full justify-center" : "inline-flex justify-center"} text-sm py-3 transition-all duration-200 ${className}`}
-      style={{
-        background: "color-mix(in oklab, var(--color-warning) 10%, white)",
-        color: "var(--color-warning)",
-        border: "1px solid color-mix(in oklab, var(--color-warning) 30%, transparent)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "color-mix(in oklab, var(--color-warning) 15%, white)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "color-mix(in oklab, var(--color-warning) 10%, white)";
-      }}
+      className={[
+        "btn text-sm py-3 transition-colors duration-200",
+        // Light red background + red text to signal a destructive action
+        "bg-[color-mix(in_oklab,var(--color-warning)_10%,white)]",
+        "text-[var(--color-warning)]",
+        "border border-[color-mix(in_oklab,var(--color-warning)_30%,transparent)]",
+        // Slightly darker on hover
+        "hover:bg-[color-mix(in_oklab,var(--color-warning)_20%,white)]",
+        // Visible focus ring for keyboard navigation
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-warning)] focus-visible:ring-offset-2",
+        fullWidth ? "w-full justify-center" : "inline-flex justify-center",
+        className,
+      ].join(" ")}
     >
       Logout
     </button>

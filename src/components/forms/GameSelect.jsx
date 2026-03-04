@@ -6,7 +6,7 @@ export default function GameSelect({
   onChange,
   label = "Game",
   placeholder = "Select a game",
-  allowCreate = false, // set true to show "Add new game" when not found
+  allowCreate = false,
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);

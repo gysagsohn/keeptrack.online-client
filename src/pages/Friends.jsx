@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import Alert from "../components/ui/Alert";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
+import Skeleton from "../components/ui/Skeleton";
+import FriendSearch from "../components/friends/FriendSearch";
 import { useAuth } from "../contexts/useAuth";
 import api from "../lib/axios";
-import FriendSearch from "../components/friends/FriendSearch";
-import Skeleton from "../components/ui/Skeleton";
-import { memo } from "react";
-import Alert from "../components/ui/Alert"; 
 
+// Memoized row component for each user in a list.
+// Custom comparator avoids re-renders when unrelated state changes —
+// only re-renders if the user's id or subtitle changes.
 const UserRow = memo(
   function UserRow({ user, right, subtitle }) {
     const name =
@@ -30,14 +32,30 @@ const UserRow = memo(
       </div>
     );
   },
-  // Custom comparison: only re-render if user ID or subtitle changes
-  (prevProps, nextProps) => {
-    return (
-      prevProps.user?._id === nextProps.user?._id &&
-      prevProps.subtitle === nextProps.subtitle
-    );
-  }
+  (prev, next) =>
+    prev.user?._id === next.user?._id && prev.subtitle === next.subtitle
 );
+
+// Tab button — defined outside the page component so it isn't
+// recreated on every render
+function TabButton({ id, activeTab, onSelect, children }) {
+  const isActive = activeTab === id;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={isActive}
+      onClick={() => onSelect(id)}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+        ${isActive
+          ? "bg-[color-mix(in oklab,var(--color-cta)_10%,transparent)] text-[var(--color-cta)] shadow-sm"
+          : "text-[var(--color-secondary)] hover:bg-[color-mix(in oklab,var(--color-border-muted)_25%,transparent)] hover:text-[var(--color-primary)]"
+        }`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function FriendsPage() {
   const { user } = useAuth();
@@ -50,13 +68,13 @@ export default function FriendsPage() {
   const [ok, setOk] = useState("");
   const [err, setErr] = useState("");
 
-  // data
+  // Per-tab data
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [sent, setSent] = useState([]);
   const [suggested, setSuggested] = useState([]);
 
-  // send-by-email form
+  // Send-by-email form state
   const [targetEmail, setTargetEmail] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -66,6 +84,7 @@ export default function FriendsPage() {
     setParams(nextParams, { replace: true });
   };
 
+  // Re-fetch data whenever the active tab or user changes
   useEffect(() => {
     let ignore = false;
     async function load() {
@@ -102,6 +121,7 @@ export default function FriendsPage() {
     return () => { ignore = true; };
   }, [tab, myId]);
 
+  // Badge counts shown on each tab button
   const counts = useMemo(
     () => ({
       list: friends.length,
@@ -112,63 +132,56 @@ export default function FriendsPage() {
     [friends.length, requests.length, sent.length, suggested.length]
   );
 
-const accept = async (senderId) => {
-  try {
-    setErr(""); setOk("");
-    await api.post("/friends/respond", { senderId, action: "Accepted" });
-    setRequests((prev) => prev.filter((r) => r.user?._id !== senderId));
-    setOk("Friend request accepted.");
-
-    // Mark the related friend_request notification as read
+  /**
+   * Accept or reject a friend request.
+   * Extracted from two near-identical functions — the only difference
+   * between accepting and rejecting is the action string passed to the API.
+   *
+   * After responding, attempts to mark the related friend_request
+   * notification as read. This is non-critical so errors are swallowed.
+   */
+  const handleFriendRequest = async (senderId, action) => {
     try {
-      const res = await api.get("/friends/notifications");
-      const notifications = res.data?.data || [];
-      const related = notifications.find(
-        n => n.type === "friend_request" && !n.read &&
-             n.sender && String(n.sender._id) === String(senderId)
-      );
-      if (related) {
-        await api.put(`/friends/notifications/${related._id}/read`);
+      setErr(""); setOk("");
+      await api.post("/friends/respond", { senderId, action });
+      setRequests((prev) => prev.filter((r) => r.user?._id !== senderId));
+      setOk(action === "Accepted" ? "Friend request accepted." : "Friend request rejected.");
+
+      // Mark the related notification as read (best-effort)
+      try {
+        const res = await api.get("/friends/notifications");
+        const notifications = res.data?.data || [];
+        const related = notifications.find(
+          (n) =>
+            n.type === "friend_request" &&
+            !n.read &&
+            n.sender &&
+            String(n.sender._id) === String(senderId)
+        );
+        if (related) {
+          await api.put(`/friends/notifications/${related._id}/read`);
+        }
+      } catch {
+        // Non-critical — don't surface this to the user
       }
-    } catch {
-      // Non-critical — don't surface this error to the user
+    } catch (e) {
+      setErr(e.message || `Failed to ${action === "Accepted" ? "accept" : "reject"} request.`);
     }
-  } catch (e) { setErr(e.message || "Failed to accept."); }
-};
+  };
 
-const reject = async (senderId) => {
-  try {
-    setErr(""); setOk("");
-    await api.post("/friends/respond", { senderId, action: "Rejected" });
-    setRequests((prev) => prev.filter((r) => r.user?._id !== senderId));
-    setOk("Friend request rejected.");
-
-    // Mark the related friend_request notification as read
-    try {
-      const res = await api.get("/friends/notifications");
-      const notifications = res.data?.data || [];
-      const related = notifications.find(
-        n => n.type === "friend_request" && !n.read &&
-             n.sender && String(n.sender._id) === String(senderId)
-      );
-      if (related) {
-        await api.put(`/friends/notifications/${related._id}/read`);
-      }
-    } catch {
-      // Non-critical
-    }
-  } catch (e) { setErr(e.message || "Failed to reject."); }
-};
-
+  // Remove a friend from both users' friend lists
   const unfriend = async (friendId) => {
     try {
       setErr(""); setOk("");
       await api.post("/friends/unfriend", { friendId });
       setFriends((prev) => prev.filter((f) => f._id !== friendId));
       setOk("Removed from friends.");
-    } catch (e) { setErr(e.message || "Failed to unfriend."); }
+    } catch (e) {
+      setErr(e.message || "Failed to unfriend.");
+    }
   };
 
+  // Send a friend request by email address
   const sendByEmail = async (e) => {
     e.preventDefault();
     if (!targetEmail.trim()) return;
@@ -178,6 +191,7 @@ const reject = async (senderId) => {
       await api.post("/friends/send", { email: targetEmail.trim() });
       setTargetEmail("");
       setOk("Friend request sent.");
+      // Refresh sent list if currently viewing it
       if (tab === "sent") {
         const res = await api.get("/friends/sent");
         setSent(res.data?.data || res.data || []);
@@ -189,6 +203,7 @@ const reject = async (senderId) => {
     }
   };
 
+  // Send a friend request to a suggested user (uses their email)
   const addSuggested = async (u) => {
     if (!u?.email) return;
     try {
@@ -204,44 +219,32 @@ const reject = async (senderId) => {
     }
   };
 
-const TabButton = ({ id, children }) => {
-  const isActive = tab === id;
-  return (
-    <button
-      type="button"
-      onClick={() => setTab(id)}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-        ${isActive
-          ? "bg-[color-mix(in oklab,var(--color-cta)_10%,transparent)] text-[var(--color-cta)] shadow-sm"
-          : "text-[var(--color-secondary)] hover:bg-[color-mix(in oklab,var(--color-border-muted)_25%,transparent)] hover:text-[var(--color-primary)]"
-        }`}
-    >
-      {children}
-    </button>
-  );
-};
-
   return (
     <main className="py-2 lg:py-6">
       <h1 className="h1 text-center mb-6 lg:mb-10">Friends</h1>
 
-      {/* Tabs */}
-      <div
-        className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 mb-4"
-        role="tablist"
-      >
-        <TabButton id="list">My Friends {counts.list ? `(${counts.list})` : ""}</TabButton>
-        <TabButton id="requests">Requests {counts.requests ? `(${counts.requests})` : ""}</TabButton>
-        <TabButton id="sent">Sent {counts.sent ? `(${counts.sent})` : ""}</TabButton>
-        <TabButton id="suggested">Suggested {counts.suggested ? `(${counts.suggested})` : ""}</TabButton>
+      {/* Tab navigation */}
+      <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 mb-4" role="tablist">
+        <TabButton id="list" activeTab={tab} onSelect={setTab}>
+          My Friends {counts.list ? `(${counts.list})` : ""}
+        </TabButton>
+        <TabButton id="requests" activeTab={tab} onSelect={setTab}>
+          Requests {counts.requests ? `(${counts.requests})` : ""}
+        </TabButton>
+        <TabButton id="sent" activeTab={tab} onSelect={setTab}>
+          Sent {counts.sent ? `(${counts.sent})` : ""}
+        </TabButton>
+        <TabButton id="suggested" activeTab={tab} onSelect={setTab}>
+          Suggested {counts.suggested ? `(${counts.suggested})` : ""}
+        </TabButton>
       </div>
 
-      {/* Find Friends */}
+      {/* Search for users by name or email */}
       <div className="mb-6">
         <FriendSearch />
       </div>
 
-      {/* Send Friend Request (email) — full width card, centered content */}
+      {/* Send a friend request by email */}
       <Card className="w-full max-w-2xl mx-auto mb-6 p-5">
         <h3 className="text-sm font-semibold text-center mb-4">Send Friend Request</h3>
         <form
@@ -257,33 +260,29 @@ const TabButton = ({ id, children }) => {
             wrapperClassName="flex-1"
             className="w-full text-center"
           />
-          <Button
-            type="submit"
-            disabled={sending}
-            className="w-full sm:w-auto sm:min-w-[110px]"
-          >
+          <Button type="submit" disabled={sending} className="w-full sm:w-auto sm:min-w-[110px]">
             {sending ? "Sending…" : "Send"}
           </Button>
         </form>
       </Card>
 
-      {/* Feedback banners */}
+      {/* Success / error feedback */}
       {err && (
         <div className="mb-4 flex justify-center px-4">
-          <Alert variant="error" style={{ width: 'auto', maxWidth: '36rem', minWidth: '300px' }}>
+          <Alert variant="error" style={{ width: "auto", maxWidth: "36rem", minWidth: "300px" }}>
             <div className="text-center">{err}</div>
           </Alert>
         </div>
       )}
       {ok && (
         <div className="mb-4 flex justify-center px-4">
-          <Alert variant="success" style={{ width: 'auto', maxWidth: '36rem', minWidth: '300px' }}>
+          <Alert variant="success" style={{ width: "auto", maxWidth: "36rem", minWidth: "300px" }}>
             <div className="text-center">{ok}</div>
           </Alert>
         </div>
       )}
 
-      {/* Content per tab */}
+      {/* Tab content */}
       <div className="grid gap-3 max-w-3xl mx-auto">
         {loading ? (
           <div className="grid gap-3 max-w-3xl mx-auto">
@@ -305,7 +304,7 @@ const TabButton = ({ id, children }) => {
         ) : tab === "list" ? (
           friends.length === 0 ? (
             <Card className="p-6 text-center">
-              <p className="text-secondary">You haven’t added any friends yet.</p>
+              <p className="text-secondary">You haven't added any friends yet.</p>
             </Card>
           ) : (
             friends.map((u) => (
@@ -332,10 +331,10 @@ const TabButton = ({ id, children }) => {
                 user={r.user}
                 right={
                   <>
-                    <Button className="btn-sm" onClick={() => accept(r.user._id)}>
+                    <Button className="btn-sm" onClick={() => handleFriendRequest(r.user._id, "Accepted")}>
                       Accept
                     </Button>
-                    <Button className="btn-sm" onClick={() => reject(r.user._id)}>
+                    <Button className="btn-sm" onClick={() => handleFriendRequest(r.user._id, "Rejected")}>
                       Reject
                     </Button>
                   </>
@@ -368,11 +367,7 @@ const TabButton = ({ id, children }) => {
               key={u._id}
               user={u}
               right={
-                <Button
-                  className="btn-sm"
-                  onClick={() => addSuggested(u)}
-                  disabled={!u.email}
-                >
+                <Button className="btn-sm" onClick={() => addSuggested(u)} disabled={!u.email}>
                   Add friend
                 </Button>
               }

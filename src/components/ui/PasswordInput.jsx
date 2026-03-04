@@ -1,4 +1,3 @@
-// src/components/ui/PasswordInput.jsx
 import { useId, useState } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 

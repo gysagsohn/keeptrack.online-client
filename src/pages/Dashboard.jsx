@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ActionButtons from "../components/dashboard/ActionButtons";
 import LastGameCard from "../components/dashboard/LastGameCard";
@@ -11,15 +11,14 @@ import api from "../lib/axios";
 export default function Dashboard() {
   const { user } = useAuth();
 
-  // Local UI state
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
 
-  // Fetch sessions + stats together on mount (and when user id changes)
+  // Fetch sessions and stats in parallel on mount, or when the user changes
   useEffect(() => {
-    let ignore = false; // avoid setting state after unmount
+    let ignore = false; // prevents state updates if the component unmounts mid-request
 
     async function load() {
       if (!user?._id) {
@@ -31,7 +30,6 @@ export default function Dashboard() {
         setLoading(true);
         setError("");
 
-        // Fire both requests
         const [mRes, sRes] = await Promise.all([
           api.get("/sessions"),
           api.get(`/users/${user._id}/stats`)
@@ -39,11 +37,10 @@ export default function Dashboard() {
 
         if (ignore) return;
 
-        // Normalize payloads from API
         const mPayload = mRes.data?.data || mRes.data || [];
         const sPayload = sRes.data?.data || sRes.data || {};
 
-        // Sort newest to oldest by date
+        // Sort newest match first for the "last game" card
         const sorted = Array.isArray(mPayload)
           ? [...mPayload].sort((a, b) => new Date(b.date) - new Date(a.date))
           : [];
@@ -58,42 +55,35 @@ export default function Dashboard() {
     }
 
     load();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [user?._id]);
 
-  // Derive the "last match" once, memoized
-  const lastMatch = useMemo(() => matches?.[0] || null, [matches]);
+  // Most recent match — first item after sorting
+  const lastMatch = matches?.[0] || null;
 
   return (
     <main className="py-2 lg:py-6 px-4">
-      {/* Heading */}
       <h1 className="h1 text-center mb-6 lg:mb-10">
         Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
       </h1>
 
-      {/* Error banner */}
       {error && (
         <div className="mb-4">
-          <Alert
-            variant="error"
-            title="Something went wrong"
-            onClose={() => setError("")}
-          >
+          <Alert variant="error" title="Something went wrong" onClose={() => setError("")}>
             {error}
           </Alert>
         </div>
       )}
 
-      {/* Main cards */}
-      <section className="grid gap-6 lg:gap-10 md:grid-cols-2 mb-8 lg:mb-12 max-w-2xl md:max-w-none mx-auto">      
+      <section className="grid gap-6 lg:gap-10 md:grid-cols-2 mb-8 lg:mb-12 max-w-2xl md:max-w-none mx-auto">
         {loading ? (
+          // Skeleton uses design token colour (not raw Tailwind grey) to stay
+          // consistent with the Skeleton component used elsewhere
           <Card className="p-6">
             <div className="animate-pulse space-y-4">
-              <div className="h-6 bg-gray-200 rounded w-1/2"></div>
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              <div className="h-6 bg-[--color-border-muted] rounded w-1/2"></div>
+              <div className="h-4 bg-[--color-border-muted] rounded w-3/4"></div>
+              <div className="h-4 bg-[--color-border-muted] rounded w-2/3"></div>
             </div>
           </Card>
         ) : lastMatch ? (
@@ -110,11 +100,10 @@ export default function Dashboard() {
             </Link>
           </Card>
         )}
-        
+
         <StatsCard stats={stats} loading={loading} />
       </section>
 
-      {/* Quick actions */}
       <div className="mt-6 lg:mt-10">
         <ActionButtons />
       </div>

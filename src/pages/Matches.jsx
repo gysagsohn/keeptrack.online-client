@@ -16,7 +16,7 @@ function idOf(v) {
 export default function MatchesPage() {
   const { user } = useAuth();
   const myId = user?._id ? String(user._id) : null;
-  const location = useLocation(); // FIX: track navigation so we re-fetch on return
+  const location = useLocation(); 
 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);

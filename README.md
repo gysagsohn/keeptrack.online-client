@@ -321,6 +321,19 @@ Axios instance with:
 - PWA / offline support (planned)
 - Comprehensive test coverage with Vitest/Playwright (planned)
 
+### Planned Features
+- **Game favourites UI** — backend toggle (`POST /games/:id/like`) is implemented; frontend UI not yet built
+- **Mutual friends page** — backend endpoint (`GET /friends/mutual/:id`) is implemented; no frontend page yet  
+- **Admin dashboard** — full admin API is built (user management, analytics, suspend/verify); no frontend UI yet
+- **Password complexity enforcement** — currently only minimum length (8 chars) is enforced on both frontend and backend; letter + number + symbol requirement shown in UI placeholder is not yet validated server-side
+
+### Technical Debt
+- `GET /users` endpoint returns all users with no pagination; reserved for a future admin UI
+- `POST /users` endpoint (raw user creation) is unvalidated; reserved for future admin tooling or should be removed
+- `user.stats` fields (`wins`, `losses`, `mostPlayed`) on the User model are not currently updated — stats are calculated dynamically from sessions; `getTopPlayers` and `getUserWinRates` admin analytics will need these fields to be kept in sync before they are accurate
+- Password reset complexity validation should be tightened to match frontend requirements
+- JWT stored in localStorage (XSS risk); planned migration to httpOnly cookies
+
 ---
 
 ## Author

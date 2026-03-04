@@ -14,7 +14,7 @@ export default function GoogleButton({ className = "" }) {
       return;
     }
     
-    // ✅ DEBUG: Log the full URL
+    // DEBUG: Log the full URL
     const redirect = encodeURIComponent(window.location.pathname || "/dashboard");
     const fullUrl = `${API}/auth/google?redirect=${redirect}`;
     console.log("🔍 API:", API);

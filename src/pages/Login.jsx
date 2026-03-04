@@ -69,7 +69,7 @@ export default function LoginPage() {
           <div className="flex justify-center lg:justify-start">
             <img
               src={logo}
-              alt="Game Tracker"
+              alt="Keep Track"
               className="w-32 h-auto sm:w-40 lg:w-[520px] lg:max-w-[520px]"
             />
           </div>

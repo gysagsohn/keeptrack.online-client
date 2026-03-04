@@ -173,7 +173,7 @@ const MatchCard = memo(
       prevProps.match.matchStatus === nextProps.match.matchStatus &&
       prevProps.confirmingId === nextProps.confirmingId &&
       prevProps.remindingId === nextProps.remindingId &&
-      // Check if players array changed (simple length check is enough for re-render decision)
+      // Check if players array changed (simple length check)
       prevProps.match.players?.length === nextProps.match.players?.length
     );
   }
