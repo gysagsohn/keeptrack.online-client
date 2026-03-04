@@ -15,7 +15,6 @@ function Notifications() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  // Use useCallback to memoize fetchNotifications
   const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
@@ -34,16 +33,11 @@ function Notifications() {
 
   async function markAsRead(notificationId) {
     if (processingIds.has(notificationId)) return;
-
     try {
       setProcessingIds(prev => new Set(prev).add(notificationId));
       await axios.put(`/friends/notifications/${notificationId}/read`);
-      
-      // Update local state immediately
       setNotifications(prev =>
-        prev.map(n =>
-          n._id === notificationId ? { ...n, read: true } : n
-        )
+        prev.map(n => n._id === notificationId ? { ...n, read: true } : n)
       );
     } catch {
       toast.error('Failed to mark as read');
@@ -66,51 +60,40 @@ function Notifications() {
     }
   }
 
-async function handleFriendResponse(notificationId, senderId, action) {
-  if (processingIds.has(notificationId)) return;
-
-  try {
-    setProcessingIds(prev => new Set(prev).add(notificationId));
-    
-
-    await axios.post('/friends/respond', {
-      senderId: senderId,
-      action: action // 'Accepted' or 'Rejected'∂ç
-    });
-
-
-    await axios.put(`/friends/notifications/${notificationId}/read`);
-
-  
-    setNotifications(prev =>
-      prev.map(n =>
-        n._id === notificationId ? { ...n, read: true } : n
-      )
-    );
-
-    toast.success(
-      action === 'Accepted' 
-        ? 'Friend request accepted!' 
-        : 'Friend request rejected'
-    );
-
-  } catch (error) {
-    toast.error(error.message || `Failed to ${action.toLowerCase()} friend request`);
-  } finally {
-    setProcessingIds(prev => {
-      const next = new Set(prev);
-      next.delete(notificationId);
-      return next;
-    });
-  }
-}
-
-  async function handleMatchResponse(notificationId, sessionId, action) {
+  // Accept or reject a friend request directly from the notification feed
+  async function handleFriendResponse(notificationId, senderId, action) {
     if (processingIds.has(notificationId)) return;
-
     try {
       setProcessingIds(prev => new Set(prev).add(notificationId));
-      
+
+      await axios.post('/friends/respond', {
+        senderId,
+        action, // 'Accepted' or 'Rejected'
+      });
+
+      await axios.put(`/friends/notifications/${notificationId}/read`);
+      setNotifications(prev =>
+        prev.map(n => n._id === notificationId ? { ...n, read: true } : n)
+      );
+
+      toast.success(action === 'Accepted' ? 'Friend request accepted!' : 'Friend request rejected');
+    } catch (error) {
+      toast.error(error.message || `Failed to ${action.toLowerCase()} friend request`);
+    } finally {
+      setProcessingIds(prev => {
+        const next = new Set(prev);
+        next.delete(notificationId);
+        return next;
+      });
+    }
+  }
+
+  // Confirm or decline a match directly from the notification feed
+  async function handleMatchResponse(notificationId, sessionId, action) {
+    if (processingIds.has(notificationId)) return;
+    try {
+      setProcessingIds(prev => new Set(prev).add(notificationId));
+
       if (action === 'confirm') {
         await axios.post(`/sessions/${sessionId}/confirm`);
         toast.success('Match confirmed!');
@@ -119,17 +102,11 @@ async function handleFriendResponse(notificationId, senderId, action) {
         toast.success('Match declined');
       }
 
-      // IMMEDIATELY mark as read in local state
+      // Optimistic local update, then sync from server
       setNotifications(prev =>
-        prev.map(n =>
-          n._id === notificationId ? { ...n, read: true } : n
-        )
+        prev.map(n => n._id === notificationId ? { ...n, read: true } : n)
       );
-
-      // Also mark as read on backend
       await axios.put(`/friends/notifications/${notificationId}/read`);
-
-      // Optional: Refresh to get latest state
       await fetchNotifications();
     } catch (error) {
       toast.error(error.message || `Failed to ${action} match`);
@@ -147,51 +124,35 @@ async function handleFriendResponse(notificationId, senderId, action) {
       await markAsRead(notification._id);
     }
 
-    // Navigate based on notification type
     switch (notification.type) {
       case NOTIFICATION_TYPES.FRIEND_REQUEST:
-        // Don't navigate - let user use inline buttons
+        // Handled inline — no navigation needed
         break;
-        
       case NOTIFICATION_TYPES.FRIEND_ACCEPT:
         navigate('/friends');
         break;
-        
       case NOTIFICATION_TYPES.MATCH_INVITE:
       case NOTIFICATION_TYPES.MATCH_UPDATED:
       case NOTIFICATION_TYPES.MATCH_REMINDER:
-        if (notification.session) {
-          navigate(`/matches/${notification.session}`);
-        } else {
-          navigate('/matches');
-        }
-        break;
-        
       case NOTIFICATION_TYPES.MATCH_CONFIRMED:
       case NOTIFICATION_TYPES.MATCH_DECLINED:
-        if (notification.session) {
-          navigate(`/matches/${notification.session}`);
-        } else {
-          navigate('/matches');
-        }
+        navigate(notification.session ? `/matches/${notification.session}` : '/matches');
         break;
-        
       default:
-        // For unknown types, don't navigate
         break;
     }
   }
 
-  const filteredNotifications = notifications.filter(n => {
-    if (filter === 'unread') return !n.read;
-    return true;
-  });
-
+  const filteredNotifications = notifications.filter(n =>
+    filter === 'unread' ? !n.read : true
+  );
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Single role="status" wrapper so screen readers announce "Loading" once,
+  // not once per Skeleton element
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div role="status" aria-label="Loading" className="max-w-3xl mx-auto px-4 py-8">
         <Skeleton className="h-8 w-48 mb-6" />
         {[1, 2, 3].map(i => (
           <Skeleton key={i} className="h-24 mb-4" />
@@ -231,167 +192,149 @@ async function handleFriendResponse(notificationId, senderId, action) {
       {filteredNotifications.length === 0 ? (
         <Card>
           <p className="text-secondary text-center py-8">
-            {filter === 'unread' 
-              ? 'No unread notifications'
-              : 'No notifications yet'}
+            {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
           </p>
         </Card>
       ) : (
         <div className="space-y-3">
-        {filteredNotifications.map((notification) => {
-          const isProcessing = processingIds.has(notification._id);
-          const isFriendRequest = notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST;
-          const isMatchInvite = notification.type === NOTIFICATION_TYPES.MATCH_INVITE;
-          const isMatchInfo = [
-            NOTIFICATION_TYPES.MATCH_CONFIRMED,
-            NOTIFICATION_TYPES.MATCH_DECLINED,
-            NOTIFICATION_TYPES.MATCH_UPDATED,
-            NOTIFICATION_TYPES.MATCH_REMINDER
-          ].includes(notification.type);
-          
-          const isClickable = !isFriendRequest && !isMatchInvite;
-          
-          return (
-            <Card
-              key={notification._id}
-              className={`p-4 transition-shadow ${
-                isClickable ? 'cursor-pointer hover:shadow-md' : ''
-              } ${notification.read ? 'opacity-70' : 'bg-blue-50'}`}
-              onClick={() => isClickable && handleNotificationClick(notification)}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="body-text break-words">
-                    {notification.message}
-                  </p>
-                  <p className="text-small text-secondary mt-1">
-                    {new Date(notification.createdAt).toLocaleDateString()} at{' '}
-                    {new Date(notification.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
+          {filteredNotifications.map((notification) => {
+            const isProcessing = processingIds.has(notification._id);
+            const isFriendRequest = notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST;
+            const isMatchInvite = notification.type === NOTIFICATION_TYPES.MATCH_INVITE;
+            const isMatchInfo = [
+              NOTIFICATION_TYPES.MATCH_CONFIRMED,
+              NOTIFICATION_TYPES.MATCH_DECLINED,
+              NOTIFICATION_TYPES.MATCH_UPDATED,
+              NOTIFICATION_TYPES.MATCH_REMINDER,
+            ].includes(notification.type);
 
-                  {/* Show status for read friend requests */}
-                  {isFriendRequest && notification.read && (
-                    <p className="text-small mt-1 font-medium" style={{ color: '#57F287' }}>
-                      ✓ Responded
+            // Clickable notifications navigate on click; actionable ones use inline buttons
+            const isClickable = !isFriendRequest && !isMatchInvite;
+
+            return (
+              <Card
+                key={notification._id}
+                className={`p-4 transition-shadow ${
+                  isClickable ? 'cursor-pointer hover:shadow-md' : ''
+                } ${notification.read ? 'opacity-70' : 'bg-blue-50'}`}
+                onClick={() => isClickable && handleNotificationClick(notification)}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="body-text break-words">{notification.message}</p>
+                    <p className="text-small text-secondary mt-1">
+                      {new Date(notification.createdAt).toLocaleDateString()} at{' '}
+                      {new Date(notification.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </p>
+
+                    {/* Show responded state for actioned friend requests */}
+                    {isFriendRequest && notification.read && (
+                      <p className="text-small mt-1 font-medium" style={{ color: '#57F287' }}>
+                        ✓ Responded
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Inline accept/reject for unread friend requests */}
+                  {isFriendRequest && notification.sender && !notification.read && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFriendResponse(notification._id, notification.sender._id, 'Accepted');
+                        }}
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? 'Processing...' : 'Accept'}
+                      </Button>
+                      <Button
+                        variant="warning"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFriendResponse(notification._id, notification.sender._id, 'Rejected');
+                        }}
+                        disabled={isProcessing}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Inline confirm/decline for unread match invites */}
+                  {isMatchInvite && notification.session && !notification.read && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMatchResponse(notification._id, notification.session, 'confirm');
+                        }}
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? 'Confirming...' : 'Confirm'}
+                      </Button>
+                      <Button
+                        variant="warning"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMatchResponse(notification._id, notification.session, 'decline');
+                        }}
+                        disabled={isProcessing}
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* View button for informational match notifications */}
+                  {isMatchInfo && notification.session && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/matches/${notification.session}`);
+                      }}
+                    >
+                      View Match
+                    </Button>
+                  )}
+
+                  {/* View button for already-actioned notifications */}
+                  {((isFriendRequest && notification.read) || (isMatchInvite && notification.read)) && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(isFriendRequest
+                          ? '/friends?tab=requests'
+                          : notification.session
+                            ? `/matches/${notification.session}`
+                            : '/matches'
+                        );
+                      }}
+                    >
+                      View
+                    </Button>
+                  )}
+
+                  {/* Unread indicator dot for clickable notifications */}
+                  {!notification.read && isClickable && (
+                    <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2" />
                   )}
                 </div>
-
-                {/* Friend Request Actions - ONLY show if UNREAD */}
-                {isFriendRequest && notification.sender && !notification.read && (
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      variant="success"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFriendResponse(
-                          notification._id,
-                          notification.sender._id,
-                          'Accepted'
-                        );
-                      }}
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? 'Processing...' : 'Accept'}
-                    </Button>
-                    <Button
-                      variant="warning"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFriendResponse(
-                          notification._id,
-                          notification.sender._id,
-                          'Rejected'
-                        );
-                      }}
-                      disabled={isProcessing}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                )}
-
-                {/* Match Invite Actions - ONLY for MATCH_INVITE and UNREAD */}
-                {isMatchInvite && notification.session && !notification.read && (
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                      variant="success"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMatchResponse(
-                          notification._id,
-                          notification.session,
-                          'confirm'
-                        );
-                      }}
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? 'Confirming...' : 'Confirm'}
-                    </Button>
-                    <Button
-                      variant="warning"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMatchResponse(
-                          notification._id,
-                          notification.session,
-                          'decline'
-                        );
-                      }}
-                      disabled={isProcessing}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                )}
-
-                {/* View button for informational match notifications */}
-                {isMatchInfo && notification.session && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/matches/${notification.session}`);
-                    }}
-                  >
-                    View Match
-                  </Button>
-                )}
-
-                {/* "View" button for already-responded friend requests or match invites */}
-                {((isFriendRequest && notification.read) || (isMatchInvite && notification.read)) && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (isFriendRequest) {
-                        navigate('/friends?tab=requests');
-                      } else if (notification.session) {
-                        navigate(`/matches/${notification.session}`);
-                      }
-                    }}
-                  >
-                    View
-                  </Button>
-                )}
-
-                {/* Read indicator for clickable notifications */}
-                {!notification.read && isClickable && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2" />
-                )}
-              </div>
-            </Card>
-          );
-        })}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
