@@ -6,6 +6,8 @@ import MatchCard from "../components/matches/MatchCard";
 import { useAuth } from "../contexts/useAuth";
 import api from "../lib/axios";
 
+// Normalise player.user to a plain string ID regardless of whether
+// it has been populated (object) or is a raw ref (string)
 function idOf(v) {
   if (!v) return null;
   if (typeof v === "string") return v;
@@ -16,7 +18,8 @@ function idOf(v) {
 export default function MatchesPage() {
   const { user } = useAuth();
   const myId = user?._id ? String(user._id) : null;
-  const location = useLocation(); 
+  // location.key changes on every navigation, used to re-fetch after edits
+  const location = useLocation();
 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
@@ -26,7 +29,7 @@ export default function MatchesPage() {
   const [remindingId, setRemindingId] = useState(null);
   const [remindMsg, setRemindMsg] = useState("");
 
-
+  // Re-fetch whenever the user navigates to this page
   useEffect(() => {
     let ignore = false;
     async function load() {
@@ -43,19 +46,16 @@ export default function MatchesPage() {
       }
     }
     load();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [location.key]);
 
-  // Derived list with filters
+  // Derived list: sort newest-first, then apply result and game name filters
   const list = useMemo(() => {
     let out = [...matches].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     if (filters.result !== "all") {
       out = out.filter((m) => {
-        const me =
-          (m?.players || []).find((p) => String(idOf(p.user)) === myId) || null;
+        const me = (m?.players || []).find((p) => String(idOf(p.user)) === myId) || null;
         return (me?.result || "") === filters.result;
       });
     }
@@ -70,6 +70,7 @@ export default function MatchesPage() {
     return out;
   }, [matches, filters, myId]);
 
+  // Optimistically update the local match after the user confirms their result
   const confirmMe = async (matchId) => {
     try {
       setConfirmingId(matchId);
@@ -83,8 +84,7 @@ export default function MatchesPage() {
               : p
           );
           const allConfirmed =
-            players.length > 0 &&
-            players.every((p) => (p.user ? p.confirmed : true));
+            players.length > 0 && players.every((p) => (p.user ? p.confirmed : true));
           return { ...m, players, matchStatus: allConfirmed ? "Confirmed" : "Pending" };
         })
       );
@@ -95,6 +95,7 @@ export default function MatchesPage() {
     }
   };
 
+  // Send reminder emails/notifications to all unconfirmed players
   const remindPlayers = async (matchId) => {
     try {
       setRemindMsg("");
@@ -170,9 +171,11 @@ export default function MatchesPage() {
         </div>
       )}
 
-      {/* Content */}
+      {/* Content.
+          role="status" is placed on the loading wrapper so screen readers
+          announce "Loading" exactly once, rather than once per Skeleton. */}
       {loading ? (
-        <div className="grid gap-3 max-w-3xl mx-auto">
+        <div role="status" aria-label="Loading" className="grid gap-3 max-w-3xl mx-auto">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="p-4">
               <div className="flex items-center justify-between mb-3">

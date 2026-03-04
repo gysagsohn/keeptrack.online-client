@@ -8,11 +8,8 @@ export default function Skeleton({ className = "", variant = "default" }) {
     card: "h-32 bg-[--color-border-muted] rounded-lg",
   };
 
-  return (
-    <div 
-      className={`${variants[variant]} ${className} animate-pulse`}
-      role="status"
-      aria-label="Loading"
-    />
-  );
+  // role and aria-label are intentionally omitted here.
+  // Wrap a group of skeletons in a single <div role="status" aria-label="Loading">
+  // at the page level so screen readers announce "Loading" only once.
+  return <div className={`${variants[variant]} ${className} animate-pulse`} />;
 }

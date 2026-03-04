@@ -282,25 +282,29 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* Tab content */}
-      <div className="grid gap-3 max-w-3xl mx-auto">
+      {/* Tab content.
+          role="status" is on the outer wrapper so screen readers announce
+          "Loading" exactly once, rather than once per Skeleton element. */}
+      <div
+        className="grid gap-3 max-w-3xl mx-auto"
+        role={loading ? "status" : undefined}
+        aria-label={loading ? "Loading" : undefined}
+      >
         {loading ? (
-          <div className="grid gap-3 max-w-3xl mx-auto">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1">
-                    <Skeleton variant="avatar" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="w-32" />
-                      <Skeleton variant="text" className="w-48" />
-                    </div>
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1">
+                  <Skeleton variant="avatar" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="w-32" />
+                    <Skeleton variant="text" className="w-48" />
                   </div>
-                  <Skeleton variant="button" className="w-24" />
                 </div>
-              </Card>
-            ))}
-          </div>
+                <Skeleton variant="button" className="w-24" />
+              </div>
+            </Card>
+          ))
         ) : tab === "list" ? (
           friends.length === 0 ? (
             <Card className="p-6 text-center">
