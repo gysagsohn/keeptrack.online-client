@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthContext } from "./AuthContextBase";
 import api from "../lib/axios";
 import { tokenStorage } from "../utils/tokenStorage";
@@ -17,96 +17,103 @@ export default function AuthProvider({ children }) {
     setTokenState(newToken);
   }, []);
 
+  // Shared hydration function — called on mount, token change, and tab resume.
+  // Extracted so the visibilitychange handler can call it without duplicating logic.
+  const hydrateUser = useCallback(async () => {
+    const currentToken = tokenStorage.get();
+    if (!currentToken) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await api.get("/users/me");
+      setUser(res.data?.data || res.data?.user || null);
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error("AuthProvider hydration error:", err);
+      }
+      // 401 is handled by the axios interceptor (clears token, redirects to /login)
+      setToken(null);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [setToken]);
+
   // Hydrate user from token on mount or token change
   useEffect(() => {
-    let ignore = false;
-    
     async function run() {
-      try {
-        setLoading(true);
-        
-        // No token means no user - skip API call
-        if (!token) {
-          setUser(null);
-          return;
-        }
-        
-        // Use axios instance instead of fetch
-        // This benefits from interceptors (auto token injection, 401 handling)
-        const res = await api.get("/users/me");
-        
-        // Extract user from response data
-        if (!ignore) {
-          setUser(res.data?.data || res.data?.user || null);
-        }
-      } catch (err) {
-        // Log error in development for debugging
-        if (import.meta.env.DEV) {
-          console.error("AuthProvider hydration error:", err);
-        }
-        
-        // Axios interceptor already removed token and redirected on 401
-        // Just clear local state
-        if (!ignore) {
-          setToken(null);
-          setUser(null);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
+      setLoading(true);
+      if (!token) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      await hydrateUser();
+    }
+
+    run();
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  // hydrateUser intentionally omitted — we only want this to fire on token change,
+  // not every time hydrateUser is recreated. The visibilitychange handler below
+  // covers the tab-resume case independently.
+
+  // Re-validate session when the tab becomes visible again.
+  // Mobile browsers suspend background tabs — when the user returns, React does
+  // not re-mount so useEffect hooks don't re-fire. This listener catches that case
+  // and re-hydrates the user, which causes page-level data fetches to re-run.
+  const lastHydratedAt = useRef(Date.now());
+  useEffect(() => {
+    const REHYDRATE_AFTER_MS = 5 * 60 * 1000; // only re-check if tab was away 5+ min
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+
+      const awayMs = Date.now() - lastHydratedAt.current;
+      if (awayMs < REHYDRATE_AFTER_MS) return;
+
+      lastHydratedAt.current = Date.now();
+
+      // Only re-hydrate if we have a token — no point hitting the API otherwise
+      if (tokenStorage.get()) {
+        hydrateUser();
       }
     }
-    
-    run();
-    
-    // Cleanup function to prevent state updates on unmounted component
-    return () => {
-      ignore = true;
-    };
-  }, [token, setToken]);
 
-  // Email and password login
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [hydrateUser]);
+
   const login = useCallback(async (email, password) => {
-    // Use axios instance for consistent error handling
     const res = await api.post("/auth/login", { email, password });
-    
-    // Extract token and user from response
     const { token: newToken, user: newUser } = res.data;
-    
-    // Update state using the wrapper function
     setToken(newToken);
     setUser(newUser);
   }, [setToken]);
 
-  // Signup (returns response but doesn't auto-login)
-  // User should be redirected to /check-email after signup
   const signup = useCallback(async (payload) => {
-    // Use axios instance for consistent error handling
     const res = await api.post("/auth/signup", payload);
-    
-    // Return the full response data for caller to handle
     return res.data;
   }, []);
 
-  // Logout function clears token and user state
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
   }, [setToken]);
 
-
   return (
-    <AuthContext.Provider 
-      value={{ 
-        token, 
-        user, 
-        loading, 
-        login, 
-        signup, 
+    <AuthContext.Provider
+      value={{
+        token,
+        user,
+        loading,
+        login,
+        signup,
         logout,
-        setToken,  
-        setUser    
+        setToken,
+        setUser,
       }}
     >
       {children}

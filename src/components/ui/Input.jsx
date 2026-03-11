@@ -5,7 +5,7 @@ import { useId } from "react";
  * Generates a stable id to link the label and input for accessibility.
  */
 export default function Input({ label, error, hint, className = "", wrapperClassName = "", ...props }) {
-  // useId generates a stable unique id — same pattern as PasswordInput
+  // useId generates a stable unique id same pattern as PasswordInput
   const id = useId();
 
   return (
