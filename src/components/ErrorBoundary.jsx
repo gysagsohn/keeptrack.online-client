@@ -1,4 +1,5 @@
 import React from "react";
+import * as Sentry from "@sentry/react";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
 
@@ -14,7 +15,9 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ error, errorInfo });
-    console.error("Error caught by boundary:", error, errorInfo);
+
+    // Send the error to Sentry with the React component stack attached
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
   }
 
   handleReset = () => {
@@ -38,15 +41,12 @@ class ErrorBoundary extends React.Component {
                 <Button onClick={this.handleReset} className="btn-primary">
                   Go to Dashboard
                 </Button>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="btn"
-                >
+                <button onClick={() => window.location.reload()} className="btn">
                   Refresh Page
                 </button>
               </div>
 
-              {/* Show error details in development */}
+              {/* Error details visible in development only */}
               {import.meta.env.DEV && this.state.error && (
                 <details className="mt-6 text-left">
                   <summary className="cursor-pointer text-sm font-medium text-secondary mb-2">
